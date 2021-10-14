@@ -49,6 +49,7 @@ void main()
 //--------------------------------------------------------------------------------------------------------
 var fragmentShader =
 `#version 300 es
+#define PI (3.141592653589793)
 precision highp float;
 
 // INPUT
@@ -78,13 +79,17 @@ void main()
 {
 	vec3 lightDirection = normalize(uLightPosition-position);
 	vec3 normalizedNormal = normalize(normal);
-	vec3 viewDirection = -position;
+	vec3 viewDirection = normalize(uLightPosition-position);
+	float d = pow(dot(lightDirection,lightDirection),2);
+
 	// MANDATORY
 	// - a fragment shader MUST write an RGBA color
 	vec3 iA = uLightIntensity * uKa;
-	vec3 iD = uLightIntensity * uKd * max(0., dot(normalizedNormal,lightDirection)/(length(normalizedNormal)*length(lightDirection)));
-	vec3 iS = uLightIntensity * uKs * pow(max(0., dot(normalizedNormal,lightDirection+viewDirection)/(length(normalizedNormal)*length(lightDirection+viewDirection))),uNs);
-	vec3 intensity = iA + iD + iS;
+	vec3 iD = uLightIntensity/d * uKd * max(0., dot(normalizedNormal,lightDirection));
+	vec3 iS = uLightIntensity * uKs * max(0.,pow(dot(normalizedNormal,normalize(lightDirection+viewDirection)),uNs));
+	vec3 normalize_iD = iD/PI;
+	vec3 normalize_iS = iS/((uNs+2.0)/(2.0*PI));
+	vec3 intensity = iA + nomalize_iD + normalize_iS;
 	
 	oFragmentColor = vec4( intensity, 1 ); // [values are between 0.0 and 1.0]
 }
@@ -472,8 +477,8 @@ function draw_wgl()
 	{
 		Uniforms.uKa = asset_material_ka_list[i];
 		Uniforms.uKd = asset_material_kd_list[i];
-		// Uniforms.uKs = asset_material_ks_list[i];
-		// Uniforms.uNs = asset_material_ns_list[i];
+		Uniforms.uKs = asset_material_ks_list[i];
+		Uniforms.uNs = asset_material_ns_list[i];
 		// Bind "current" vertex array (VAO)
 		gl.bindVertexArray( asset_vao_list[ i ] );
 		
