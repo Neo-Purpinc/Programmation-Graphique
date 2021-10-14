@@ -124,7 +124,7 @@ function init_wgl()
     shaderProgram = ShaderProgram(vertexShader, fragmentShader, 'basic shader');
     
     
-	let mesh = Mesh.Cube();
+	let mesh = Mesh.Sphere(64);
 	cube_rend = mesh.renderer(1, 2, 3);
 
 	ewgl.scene_camera.set_scene_radius(mesh.BB.radius);
@@ -132,14 +132,14 @@ function init_wgl()
 
     texture = gl.createTexture();
     const image = new Image;
-    image.src = 'textures/lined_woolen_material_2020103_cropped_scrop.JPG';
+    image.src = 'textures/earth.jpeg';
     image.onload = () => {
         gl.bindTexture(gl.TEXTURE_2D,texture);
         gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);
         gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S, gl.REPEAT);
-        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
         gl.bindTexture(gl.TEXTURE_2D,null);
     };
