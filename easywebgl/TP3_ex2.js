@@ -80,7 +80,7 @@ void main()
 	vec3 lightDirection = normalize(uLightPosition-position);
 	vec3 normalizedNormal = normalize(normal);
 	vec3 viewDirection = normalize(uLightPosition-position);
-	float d = pow(dot(lightDirection,lightDirection),2);
+	float d = pow(dot(lightDirection,lightDirection),2.0);
 
 	// MANDATORY
 	// - a fragment shader MUST write an RGBA color
@@ -89,7 +89,7 @@ void main()
 	vec3 iS = uLightIntensity * uKs * max(0.,pow(dot(normalizedNormal,normalize(lightDirection+viewDirection)),uNs));
 	vec3 normalize_iD = iD/PI;
 	vec3 normalize_iS = iS/((uNs+2.0)/(2.0*PI));
-	vec3 intensity = iA + nomalize_iD + normalize_iS;
+	vec3 intensity = iA + normalize_iD + normalize_iS;
 	
 	oFragmentColor = vec4( intensity, 1 ); // [values are between 0.0 and 1.0]
 }
