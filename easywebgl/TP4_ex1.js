@@ -32,7 +32,7 @@ out vec2 v_textureCoord;
 void main()
 {
 	// Send data to graphics pipeline
-	v_textureCoord = textureCoord_in;
+	v_textureCoord = vec2(1.,-1.)*textureCoord_in;
 
 	// MANDATORY
 	// - a vertex shader MUST write the value of the predined variable " (GLSL langage)"
@@ -126,7 +126,7 @@ function init_wgl()
     
 	let mesh = Mesh.Sphere(64);
 	cube_rend = mesh.renderer(1, 2, 3);
-
+	
 	ewgl.scene_camera.set_scene_radius(mesh.BB.radius);
 	ewgl.scene_camera.set_scene_center(mesh.BB.center);		
 
@@ -138,9 +138,8 @@ function init_wgl()
         gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);
         gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T, gl.REPEAT);
         gl.bindTexture(gl.TEXTURE_2D,null);
     };
 	// Set default GL states
