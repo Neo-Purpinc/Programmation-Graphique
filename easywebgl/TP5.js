@@ -1,10 +1,9 @@
-
 "use strict"
 
 //--------------------------------------------------------------------------------------------------------
-// VERTEX SHADER (GLSL language)
+// VERTEX SHADER CAR (GLSL language)
 //--------------------------------------------------------------------------------------------------------
-var vertexShader =
+var vertexShader_car =
 `#version 300 es
 
 // INPUT
@@ -40,9 +39,9 @@ void main()
 `;
 
 //--------------------------------------------------------------------------------------------------------
-// FRAGMENT SHADER (GLSL language)
+// FRAGMENT SHADER CAR (GLSL language)
 //--------------------------------------------------------------------------------------------------------
-var fragmentShader =
+var fragmentShader_car =
 `#version 300 es
 precision highp float;
 
@@ -60,6 +59,8 @@ uniform vec3 uKa; // ambiant
 uniform vec3 uKd; // diffuse
 uniform vec3 uKs; // specular
 uniform float uNs; // specular
+uniform float uT; // transparence
+
 // Light (Point light)
 uniform float uLightIntensity;
 uniform vec3 uLightPosition;
@@ -104,18 +105,74 @@ void main()
 	// Reflected intensity (i.e final color)
 	vec3 color = (0.3 * Ia) + (0.3 * Id) + (0.3 * Is);
 	// --------------------------------------
-	
-	oFragmentColor = vec4( color, 1 ); // [values are between 0.0 and 1.0]
+	float transp = 1.;
+	if(uT == 1.)
+		transp = 0.3;
+	oFragmentColor = vec4( color, transp); // [values are between 0.0 and 1.0]
 }
 `;
 
+//--------------------------------------------------------------------------------------------------------
+// VERTEX SHADER CUBE (GLSL language)
+//--------------------------------------------------------------------------------------------------------
+var vertexShader_cube =
+`#version 300 es
+
+// INPUT
+// - the currently bounded vertex array (VAO) contains a VBO of 3D data (positions)
+// - variable is prefixed by "in"
+// - its "location index" MUST be the same value when using vertexAttribPointer() and enableVertexAttribArray() during VAO definition
+layout(location=3) in vec3 position_in;
+
+// UNIFORM
+// - variable is prefixed by "uniform"
+// - "uniforms" are variables on GPU in "constant memory" => there values are constant during a "draw command" such as drawArrays()
+// - they can be seen as user custom parameters of your shaders
+// - they can be accessed in any shader (vertex, fragment)
+// - Camera
+uniform mat4 uViewProjectionMatrix;
+
+out vec3 texture_coord;
+// MAIN PROGRAM
+void main()
+{
+	// MANDATORY
+	// - a vertex shader MUST write the value of the predined variable " (GLSL langage)"
+	// - this value represent a position in "clip-space"
+	// - This is the space just before dividing coordinates "xyz" by their "w" to lie in NDC space (normalized device coordinates),
+	// - i.e a cube in [-1.0;1.0]x[-1;1.0]x[-1;1.0]
+	gl_Position = uViewProjectionMatrix * vec4(position_in, 1.0);
+	texture_coord = position_in;
+}
+`;
+
+//--------------------------------------------------------------------------------------------------------
+// FRAGMENT SHADER CUBE (GLSL language)
+//--------------------------------------------------------------------------------------------------------
+var fragmentShader_cube =
+`#version 300 es
+precision highp float;
+
+in vec3 texture_coord;
+// UNIFORM
+uniform samplerCube uSampler;
+
+// OUPUT
+out vec4 oFragmentColor;
+
+// MAIN PROGRAM
+void main()
+{
+	oFragmentColor = texture(uSampler,texture_coord);
+}
+`;
 //--------------------------------------------------------------------------------------------------------
 // GLOBAL VARIABLES
 //--------------------------------------------------------------------------------------------------------
 
 // Shader program
-var shaderProgram = null;
-
+var shaderProgram_car = null;
+var shaderProgram_cube = null;
 // GUI (graphical user interface)
 // - light color
 // var slider_r;
@@ -130,6 +187,8 @@ var slider_light_intensity;
 // - rendering
 var checkbox_wireframe;
 
+var cube_renderer;
+var texture;
 // Scene Management
 // During rendering, OpenGL requires each VAO (vertex array) and its associated number of indices (of each points of triangles) of each sub-mesh of the 3D (here: car model)
 // - geometry info
@@ -140,7 +199,7 @@ var asset_material_ka_list = [];
 var asset_material_kd_list = [];
 var asset_material_ks_list = [];
 var asset_material_ns_list = [];
-
+var asset_material_T_list = [];
 //--------------------------------------------------------------------------
 // Utility function
 // - no need to understand it for the TP
@@ -362,6 +421,7 @@ function SceneManager_add( object )
 	asset_material_kd_list.push( object.Kd );
 	asset_material_ks_list.push( object.Ks );
 	asset_material_ns_list.push( object.Ns );
+	asset_material_T_list.push(object.T);
 }
 
 //--------------------------------------------------------------------------
@@ -433,16 +493,19 @@ function init_wgl()
 	UserInterface.end();
 	
 	// Create and initialize a shader program // [=> Sylvain's API - wrapper of GL code]
-	shaderProgram = ShaderProgram( vertexShader, fragmentShader, 'basic shader' );
-
+	shaderProgram_car = ShaderProgram( vertexShader_car, fragmentShader_car, 'car shader' );
+	
 	// Load the 3D asset (car model)
 	let dataPath = 'models/nissan-gtr/part'; // BEWARE: the "models" directory HAVE TO be placed in the "tp" directory near your javascript file for the TP
 	let nbMeshes = 178; // this car model is a 3D model that has been splitted into 178 pieces
 	SceneManager_loadByParts( dataPath, nbMeshes );
-    
-    
-    var texture = TextureCubeMap();
-    texture.load(["textures/skybox/px.jpg,textures/skybox/nx.jpg,textures/skybox/py.jpg,textures/skybox/ny.jpg,textures/skybox/pz.jpg,textures/skybox/nz.jpg"]);
+
+    texture = TextureCubeMap();
+	texture.load(["textures/skybox/px.jpg","textures/skybox/nx.jpg","textures/skybox/py.jpg","textures/skybox/ny.jpg","textures/skybox/nz.jpg","textures/skybox/pz.jpg"]);
+	shaderProgram_cube = ShaderProgram( vertexShader_cube, fragmentShader_cube, 'cube shader' );
+	let mesh = Mesh.Cube();
+	cube_renderer = mesh.renderer(3, -1, 4);
+
 	// Set default GL states
 	// - color to use when refreshing screen
 	gl.clearColor( 0, 0, 0 ,1 ); // black opaque [values are between 0.0 and 1.0]
@@ -470,8 +533,13 @@ function draw_wgl()
 	
 	// [part A] : set "current" shader program
 	
+	shaderProgram_cube.bind();
+	Uniforms.uSampler = texture.bind(0);
+	Uniforms.uViewProjectionMatrix = ewgl.scene_camera.get_matrix_for_skybox();
+	cube_renderer.draw(gl.TRIANGLES);
+
 	// Set "current" shader program
-	shaderProgram.bind(); // [=> Sylvain's API - wrapper of GL code]
+	shaderProgram_car.bind(); // [=> Sylvain's API - wrapper of GL code]
 
 	// [part B] : set/modify GPU "uniform" variables of current shader program
 	
@@ -493,7 +561,7 @@ function draw_wgl()
 	Uniforms.uViewMatrix = viewMatrix;
 	// - set model matrix
 	// ---- configure YOUR custom transformations (scale, rotation, translation)
-    let modelMatrix = Matrix.scale( 0.02 ); // hard-coded "scale" to be able to see the 3D asset
+	let modelMatrix = Matrix.scale( 0.02 ); // hard-coded "scale" to be able to see the 3D asset
 	Uniforms.uModelMatrix = modelMatrix;
 	// - model-view matrix
 	let mvm = Matrix.mult(viewMatrix, modelMatrix); // Model-view matrix
@@ -505,8 +573,11 @@ function draw_wgl()
 	Uniforms.uLightIntensity = slider_light_intensity.value;
 	Uniforms.uLightPosition = mvm.transform(Vec3(slider_x.value, slider_y.value, slider_z.value)); // to get the position in the View space
 	
-	// [part C] : render your scene (3D model)
+
 	
+	// [part C] : render your scene (3D model)
+	gl.enable(gl.BLEND);
+	gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 	// Draw commands
 	// - rendering mode
 	let drawMode = gl.TRIANGLES;
@@ -526,7 +597,7 @@ function draw_wgl()
 		// - specular
 		Uniforms.uKs = asset_material_ks_list[ i ];
 		Uniforms.uNs = asset_material_ns_list[ i ];
-	
+		Uniforms.uT = asset_material_T_list[ i ];
 		// Bind "current" vertex array (VAO)
 		gl.bindVertexArray( asset_vao_list[ i ] );
 
@@ -537,7 +608,7 @@ function draw_wgl()
 		// - that's why the VAO MUST store the handle (i.e. kind of pointer) of all its associated VBOs at dedicated index in an array if indices (called "attribute index")
 		gl.drawElements( drawMode, asset_nbIndices_list[ i ]/*number of vertex indices*/, gl.UNSIGNED_INT/*data type in EBO index buffer*/, 0/*not used*/ );
 	}
-	
+	gl.disable(gl.BLEND);
 	// -------------------------------------------------------------------
 	// [3] - Reset the "modified" GL states
 	//     - the graphics card DRIVER hold a list of "current" elements per type (shader program, vao, vbo, ebo, etc...)
