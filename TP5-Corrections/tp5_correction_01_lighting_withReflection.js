@@ -410,9 +410,9 @@ function init_wgl()
 	// 1. Environnement map
 	// CubeMap texture creation
 	tex_envMap = TextureCubeMap();
-	tex_envMap.load(["textures/skybox/px.jpg","textures/skybox/nx.jpg",
-	"textures/skybox/py.jpg","textures/skybox/ny.jpg",
-	"textures/skybox/nz.jpg","textures/skybox/pz.jpg"]).then(update_wgl);
+	tex_envMap.load(["images/skybox/px.jpg","images/skybox/nx.jpg",
+	"images/skybox/py.jpg","images/skybox/ny.jpg",
+	"images/skybox/nz.jpg","images/skybox/pz.jpg"]).then(update_wgl);
 	// shader prog to render the cubemap
 	prg_envMap = ShaderProgram(sky_vert,sky_frag,'sky');
 	// geometry for the cube map (texture cube map is map on a cube)
