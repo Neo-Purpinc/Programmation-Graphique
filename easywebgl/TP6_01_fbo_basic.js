@@ -1,4 +1,3 @@
-
 "use strict"
 
 //--------------------------------------------------------------------------------------------------------
@@ -81,7 +80,7 @@ void main()
 	float y = -1.0 + float((gl_VertexID & 2) << 1); // If VertexID == 2 then y = 3 else y == -1
 	
 	// Compute texture coordinates between [0;1] (-1 * 0.5 + 0.5 = 0 and 1 * 0.5 + 0.5 = 1)
-	// ...
+	texCoord = vec2(0.5*x+0.5, 0.5*y+0.5);
 	
 	// Send position to clip space
 	gl_Position = vec4(x, y, 0.0, 1.0);
@@ -98,6 +97,9 @@ precision highp float;
 // INPUT
 // Texture coordinates
 in vec2 texCoord;
+
+// UNIFORM
+uniform float uTime;
 
 // OUTPUT
 out vec4 oColor;
@@ -128,7 +130,17 @@ float dist(vec2 p0, vec2 p1)
 ////////////////////////////////////////////////////////////////////////////////
 void main()
 {
-	oColor = vec4(1.0, 0.0, 0.0, 1.0);
+
+	vec2 pmod = mod( 5.0 * texCoord, 1.0 )-vec2(0.5);
+	float val = mix(-0.5/*min*/, 0.0/*max*/, 0.5 * sin(uTime*10.0) + 0.5);
+	if(sdCircle(pmod, 0.5) < 0.0){
+		float r = mix(0.0/*min*/, 1.0/*max*/, 0.5 * sin(uTime*2.0) + 0.5);
+		float g = mix(0.0/*min*/, 1.0/*max*/, 0.5 * sin(uTime/1.5) + 0.5);
+		float b = mix(0.0/*min*/, 1.0/*max*/, 0.5 * sin(uTime*3.75) + 0.5);
+		oColor = vec4(r,g,b, 1.0);
+	}
+	else
+		oColor = vec4(0.1,0.7,0.5, 1.0);
 }
 `;
 
@@ -143,7 +155,11 @@ var shaderProgram = null;
 var cube_rend = null;
 
 // FBO
-// TODO ...
+var fbo = null; // le FBO
+var tex = null; // texture attachée au FBO et dans laquelle ont fait le rendu
+var fboTexWidth = 128; // la taille de la texture
+var fboTexHeight = 128; // la taille de la texture
+var fullscreen_shaderProgram = null; // shader spécifique pour dessiner un quad à l'écran
 
 //--------------------------------------------------------------------------------------------------------
 // Initialize graphics objects and GL states
@@ -172,10 +188,20 @@ function init_wgl()
 	
 	
 	// TEXTURE
-    // TODO ...
-	
+	tex = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D,tex);
+    gl.texImage2D( gl.TEXTURE_2D, 0 ,gl.RGBA, fboTexWidth, fboTexHeight, 0,gl.RGBA,  gl.UNSIGNED_BYTE,null);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+	gl.bindTexture(gl.TEXTURE_2D, null)
 	// FBO
-	// TODO ...
+	fbo = gl.createFramebuffer();
+	gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+	gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D, tex, 0);
+	gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
 
 		
@@ -196,21 +222,21 @@ function draw_wgl()
 	// -------------------------------------------------------------------
 	
 	// - bind "fbo" as the "current" FBO (so that following rendering commands will render data in its buffers [colors, depth])
-	// TODO ...
+	gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
 
 	// - set the viewport for the texture
-	// TODO ...
+	gl.viewport(0, 0, fboTexWidth, fboTexHeight);
 	
 	// Clear the GL "color" framebuffer (with OR) [no depth buffer here]
-	// TODO ...
+	gl.clear(gl.COLOR_BUFFER_BIT);
 	
 			// --------------------------------
 			// - render your scene
 			// --------------------------------
 	
 	// Set "current" shader program
-	// TODO ...
-	
+	fullscreen_shaderProgram.bind();
+	Uniforms.uTime = ewgl.current_time;
 	// Draw commands
 	// - render a full-screen quad
 	// MEGA-TRICKS	: with only 1 triangle whose size is "2 times" the classical size [-1;-1]x[1;1] where GL points lie 
@@ -222,20 +248,20 @@ function draw_wgl()
 	gl.drawArrays(gl.TRIANGLES, 0, 3);
 	
 	// - unbind shader program
-	// TODO ...
+	unbind_shader(fullscreen_shaderProgram);
 	
 	// -------------------------------------------------------------------
 	// Classical Rendering: default OpenGL framebuffer
 	// -------------------------------------------------------------------
 
 	// - reset GL state (unbind the framebuffer, and revert to default)
-	// TODO ...
+	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 	
 	// - set the viewport for the main window
-	// TODO ...
+	gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 	
 	// Clear the GL "color" and "depth" framebuffers (with OR)
-	// TODO ...
+	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
 			// --------------------------------
 			// - render your scene
