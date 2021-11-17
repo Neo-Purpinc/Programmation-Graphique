@@ -1,3 +1,4 @@
+
 "use strict"
 
 //--------------------------------------------------------------------------------------------------------
@@ -7,8 +8,8 @@ var vertexShader =
 `#version 300 es
 
 // INPUT
-layout(location=1) in vec3 position_in;
-layout(location=2) in vec2 textureCoord_in;
+layout(location = 1) in vec3 position_in;
+layout(location = 2) in vec2 textureCoord_in;
 
 // UNIFORM
 // - Camera
@@ -76,11 +77,12 @@ out vec2 texCoord;
 void main()
 {
 	// Compute vertex position between [-1;1]
-	float x = -1.0 + float((gl_VertexID & 1) << 2);	// If VertexID == 1 then x = 3 else x == -1
+	float x = -1.0 + float((gl_VertexID & 1) << 2); // If VertexID == 1 then x = 3 else x == -1
 	float y = -1.0 + float((gl_VertexID & 2) << 1); // If VertexID == 2 then y = 3 else y == -1
 	
 	// Compute texture coordinates between [0;1] (-1 * 0.5 + 0.5 = 0 and 1 * 0.5 + 0.5 = 1)
-	texCoord = vec2(0.5*x+0.5, 0.5*y+0.5);
+	texCoord.x = x * 0.5 + 0.5;
+	texCoord.y = y * 0.5 + 0.5;
 	
 	// Send position to clip space
 	gl_Position = vec4(x, y, 0.0, 1.0);
@@ -98,11 +100,10 @@ precision highp float;
 // Texture coordinates
 in vec2 texCoord;
 
-// UNIFORM
-uniform float uTime;
-
 // OUTPUT
 out vec4 oColor;
+
+uniform float time;
 
 // FUNCTIONS
 float noise(vec2 st)
@@ -130,17 +131,89 @@ float dist(vec2 p0, vec2 p1)
 ////////////////////////////////////////////////////////////////////////////////
 void main()
 {
-
-	vec2 pmod = mod( 5.0 * texCoord, 1.0 )-vec2(0.5);
-	float val = mix(-0.5/*min*/, 0.0/*max*/, 0.5 * sin(uTime*10.0) + 0.5);
-	if(sdCircle(pmod, 0.5) < 0.0){
-		float r = mix(0.0/*min*/, 1.0/*max*/, 0.5 * sin(uTime*2.0) + 0.5);
-		float g = mix(0.0/*min*/, 1.0/*max*/, 0.5 * sin(uTime/1.5) + 0.5);
-		float b = mix(0.0/*min*/, 1.0/*max*/, 0.5 * sin(uTime*3.75) + 0.5);
-		oColor = vec4(r,g,b, 1.0);
+#define MODE 4
+#if MODE == 0
+	oColor = vec4(texCoord, 0.0, 1.0);
+#elif MODE == 1
+	vec2 uv = mod(5.0 * texCoord, 1.0);
+	oColor = vec4(uv, 0.0, 1.0);
+#elif MODE == 2
+	vec2 uv = mod(5.0 * texCoord, 1.0);
+	float value = noise(uv);
+	vec3 color = vec3(uv, 0);
+	if (value < 0.5)
+	{
+		discard;
+		return;
 	}
-	else
-		oColor = vec4(0.1,0.7,0.5, 1.0);
+	oColor = vec4(color, 1.0);
+#elif MODE == 3
+	vec2 uv = mod(5.0 * texCoord, 1.0);
+	//vec2 uv = texCoord;
+	
+	// distance field
+	float radius = 0.1;
+	float d = sdCircle(uv - vec2(0.5), radius);
+	
+	vec3 color = vec3(d);
+	oColor = vec4(color, 1.0);
+#elif MODE == 4
+	vec2 uv = texCoord;
+	const int SEEDS = 50;
+
+	float m_dist = 1.;  // minimum distance
+	vec2 m_point;        // minimum position
+	
+	// Cell positions
+	vec2 point;
+	for (int i = 0; i < SEEDS; i++)
+	{
+		point = noise2(vec2(float(i), float(i)));
+		// animate the point
+		point = sin(time / 2.0 + 6.2831 * point) * 0.5 + 0.5;
+
+		float dist = dist(uv, point);
+		if (dist < m_dist)
+		{
+			// Keep the closer distance
+			m_dist = dist;
+
+			// Kepp the position of the closer point
+			m_point = point;
+		}
+	}
+
+	vec3 color = vec3(0);
+
+	// Add distance field to closest point center
+	color += m_dist * 2.;
+
+	// tint acording the closest point position
+	color.gb = m_point;
+
+	// Show isolines
+	// color -= abs(sin(50.0 * m_dist)) * 0.05;
+
+	// Draw point center
+	// color += 1. - step(.002, m_dist);
+
+	oColor = vec4 (color, 1.0);
+
+#else
+	vec2 uv = mod(5.0 * texCoord, 1.0);
+
+	// add turbulence
+	float turbulence = noise(uv);
+
+	float radius = 0.1;
+	float d = sdCircle(uv - vec2(0.5), radius);
+	
+	// add perturbation
+	//d += turbulence;
+	
+	vec3 color = vec3(d);
+	oColor = vec4(color, 1.0);
+#endif
 }
 `;
 
@@ -155,14 +228,17 @@ var shaderProgram = null;
 var cube_rend = null;
 
 // FBO
-var fbo = null; // le FBO
-var tex = null; // texture attachée au FBO et dans laquelle ont fait le rendu
-var fboTexWidth = 128; // la taille de la texture
-var fboTexHeight = 128; // la taille de la texture
-var fullscreen_shaderProgram = null; // shader spécifique pour dessiner un quad à l'écran
+var fbo = null;
+var tex = null;
+var fboTexWidth = 1024;
+var fboTexHeight = 1024;
+var fullscreen_shaderProgram = null;
 
 //--------------------------------------------------------------------------------------------------------
 // Initialize graphics objects and GL states
+//
+// Here, we want to load a 3D asset
+// Uniforms are used to be able edit GPU data with a customized GUI (graphical user interface)
 //--------------------------------------------------------------------------------------------------------
 function init_wgl()
 {
@@ -170,15 +246,16 @@ function init_wgl()
 	ewgl.continuous_update = true;
 	
 	// Create and initialize shader programs // [=> Sylvain's API - wrapper of GL code]
-	shaderProgram = ShaderProgram(vertexShader, fragmentShader, 'basic shader');	
+	shaderProgram = ShaderProgram(vertexShader, fragmentShader, 'basic shader');
 	// - Offscreen Rendering: FBO (framebuffer object)
 	fullscreen_shaderProgram = ShaderProgram(fullscreen_vertexShader, fullscreen_fragmentShader, 'fullscreen shader');
 
-	// Create a mesh cube and its associated renderer // [=> Sylvain's API - wrapper of GL code]
+	// Create geometry : mesh cube
 	let mesh = Mesh.Cube()
+	// get the associated renderer with positions(1) and textureCoords(2) VBO
 	cube_rend = mesh.renderer(1, -1, 2);
 
-	// Set the center and the radius of the scene // [=> Sylvain's API - wrapper of GL code]
+	// Set the view frustrum
 	ewgl.scene_camera.set_scene_radius(mesh.BB.radius);
 	ewgl.scene_camera.set_scene_center(mesh.BB.center);	
 
@@ -186,28 +263,64 @@ function init_wgl()
 	// Offscreen Rendering: FBO (framebuffer object)
 	// -------------------------------------------------------------------
 	
+	// 1) TEXTURE
 	
-	// TEXTURE
-	tex = gl.createTexture()
-    gl.bindTexture(gl.TEXTURE_2D,tex);
-    gl.texImage2D( gl.TEXTURE_2D, 0 ,gl.RGBA, fboTexWidth, fboTexHeight, 0,gl.RGBA,  gl.UNSIGNED_BYTE,null);
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-	gl.bindTexture(gl.TEXTURE_2D, null)
-	// FBO
+	tex = gl.createTexture();
+
+	// Bind texture as the "current" one
+	// - each following GL call will affect its internal state
+	gl.bindTexture(gl.TEXTURE_2D, tex);
+		
+	// Configure data type (storage on GPU) and upload image data to GPU
+	// - RGBA: 4 comonents
+	// - UNSIGNED_BYTE: each component is an "unsigned char" (i.e. value in [0;255]) => NOTE: on GPU data is automatically accessed with float type in [0;1] by default
+    const level = 0;
+	const internalFormat = gl.RGBA;
+	const border = 0;
+	const format = gl.RGBA;
+	const type = gl.UNSIGNED_BYTE;
+	const data = null;
+	gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, fboTexWidth, fboTexHeight, border, format, type, data);
+		
+	// Configure "filtering" mode
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+	//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+	//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+		
+	// Clean GL state
+	gl.bindTexture(gl.TEXTURE_2D, null);
+	
+	// 2) FBO
+	
+	// Generate the FBO (framebuffer object)
 	fbo = gl.createFramebuffer();
+	
+	// - bind "fbo" as the "current" FBO (so that following command will modify its internal state)
 	gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-	gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D, tex, 0);
-	gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-
+	
+	// Bind the texture to the FBO
+	//- attach a texture image to a framebuffer object
+	let target = gl.FRAMEBUFFER; // Specifies the framebuffer target (binding point)
+	let attachment = gl.COLOR_ATTACHMENT0; // to attach the texture to the framebuffer's color buffers [gl.COLOR_ATTACHMENTxxx, with xxx = 0 to 15]
+	let textarget = gl.TEXTURE_2D; // specifying the texture target. Here, a 2D image
+	let texture = tex; // Specifies the texture object whose image is to be attached
+	//level = 0; // texture mipmap level. Specifying the mipmap level of the texture image to be attached
+	gl.framebufferTexture2D(target, attachment, textarget, texture, level);
+	
+	// Specifies a list of color buffers to be drawn into:
+	// - set the target for the fragment shader outputs
+	// gl.NONE: Fragment shader output is not written into any color buffer.
+	// gl.BACK: Fragment shader output is written into the back color buffer.
+	// gl.COLOR_ATTACHMENT{0-15}: Fragment shader output is written in the nth color attachment of the current framebuffer.
+	gl.drawBuffers([gl.COLOR_ATTACHMENT0]); // could be a list, ex: [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]
+	
+	// - reset GL state (unbind the framebuffer, and revert to default)
+	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 		
 	// Set default GL states
 	// - color to use when refreshing screen
-	gl.clearColor(0, 0, 0 , 1); // black opaque [values are between 0.0 and 1.0]
+	gl.clearColor(0, 0, 0 ,1); // black opaque [values are between 0.0 and 1.0]
 	// - enable "depth test"
 	gl.enable(gl.DEPTH_TEST);
 }
@@ -223,11 +336,12 @@ function draw_wgl()
 	
 	// - bind "fbo" as the "current" FBO (so that following rendering commands will render data in its buffers [colors, depth])
 	gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-
+	
 	// - set the viewport for the texture
-	gl.viewport(0, 0, fboTexWidth, fboTexHeight);
+	gl.viewport(0/*x*/, 0/*y*/, fboTexWidth/*width*/, fboTexHeight/*height*/);
 	
 	// Clear the GL "color" framebuffer (with OR) [no depth buffer here]
+	// - always do that
 	gl.clear(gl.COLOR_BUFFER_BIT);
 	
 			// --------------------------------
@@ -235,20 +349,23 @@ function draw_wgl()
 			// --------------------------------
 	
 	// Set "current" shader program
-	fullscreen_shaderProgram.bind();
-	Uniforms.uTime = ewgl.current_time;
+	fullscreen_shaderProgram.bind(); // [=> Sylvain's API - wrapper of GL code]
+
+	Uniforms.time = ewgl.current_time;
+	
 	// Draw commands
 	// - render a full-screen quad
-	// MEGA-TRICKS	: with only 1 triangle whose size is "2 times" the classical size [-1;-1]x[1;1] where GL points lie 
-	//            	- The point positions are procedurally generated in the vertex shader (with gl_VertexID)
-	//            	- At the "clipping" stage, after vertex shader, before rasterization, new points
+	// MEGA-TRICK : with only 1 triangle whose size is "2 times" the classical size [-1;-1]x[1;1] where GL points lie 
+	//            - The point positions are procedurally generated in the vertex shader (with gl_VertexID)
+	//            - At the "clipping" stage, after vertex shader, before rasterization, new points
     //              are generated at the corner of the "unit cube" [-1;-1;-1]x[1;1;1] in clip space,
     //              => the geometry of the triangle is clipped, and the rasterizer generate all fragments inside the viewport
     //              This is the way "shadertoy" is working
 	gl.drawArrays(gl.TRIANGLES, 0, 3);
 	
 	// - unbind shader program
-	unbind_shader(fullscreen_shaderProgram);
+	gl.useProgram(null); // not mandatory. For optimization, could be removed.
+	
 	
 	// -------------------------------------------------------------------
 	// Classical Rendering: default OpenGL framebuffer
@@ -258,9 +375,10 @@ function draw_wgl()
 	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 	
 	// - set the viewport for the main window
-	gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+	gl.viewport(0/*x*/, 0/*y*/, gl.canvas.width/*width*/, gl.canvas.height/*height*/);
 	
 	// Clear the GL "color" and "depth" framebuffers (with OR)
+	// - always do that
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
 			// --------------------------------
